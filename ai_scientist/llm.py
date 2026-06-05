@@ -2,6 +2,8 @@ import json
 import os
 import re
 from typing import Any
+
+from ai_scientist.model_providers import create_openai_client
 from ai_scientist.utils.token_tracker import track_token_usage
 
 import anthropic
@@ -23,6 +25,8 @@ AVAILABLE_LLMS = [
     "gpt-4.1-2025-04-14",
     "gpt-4.1-mini",
     "gpt-4.1-mini-2025-04-14",
+    "gpt-5.5",
+    "openai/gpt-5.5",
     "o1",
     "o1-2024-12-17",
     "o1-preview-2024-09-12",
@@ -497,10 +501,10 @@ def create_client(model) -> tuple[Any, str]:
         ), model
     elif "gpt" in model:
         print(f"Using OpenAI API with model {model}.")
-        return openai.OpenAI(), model
+        return create_openai_client(), model
     elif "o1" in model or "o3" in model:
         print(f"Using OpenAI API with model {model}.")
-        return openai.OpenAI(), model
+        return create_openai_client(), model
     elif model == "deepseek-coder-v2-0724":
         print(f"Using OpenAI API with {model}.")
         return (

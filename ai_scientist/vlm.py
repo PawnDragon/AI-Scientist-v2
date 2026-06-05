@@ -6,6 +6,7 @@ import backoff
 import openai
 import os
 from PIL import Image
+from ai_scientist.model_providers import create_openai_client
 from ai_scientist.utils.token_tracker import track_token_usage
 
 MAX_NUM_TOKENS = 4096
@@ -15,6 +16,8 @@ AVAILABLE_VLMS = [
     "gpt-4o-2024-08-06",
     "gpt-4o-2024-11-20",
     "gpt-4o-mini-2024-07-18",
+    "gpt-5.5",
+    "openai/gpt-5.5",
     "o3-mini",
 
     # Ollama models
@@ -200,9 +203,9 @@ def create_client(model: str) -> tuple[Any, str]:
         "gpt-4o-2024-11-20",
         "gpt-4o-mini-2024-07-18",
         "o3-mini",
-    ]:
+    ] or "gpt" in model:
         print(f"Using OpenAI API with model {model}.")
-        return openai.OpenAI(), model
+        return create_openai_client(), model
     elif model.startswith("ollama/"):
         print(f"Using Ollama API with model {model}.")
         return openai.OpenAI(

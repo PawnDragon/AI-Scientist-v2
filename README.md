@@ -66,6 +66,52 @@ Installation usually takes no more than one hour.
 
 By default, the system uses the `OPENAI_API_KEY` environment variable for OpenAI models.
 
+#### OpenClaw Gateway for ChatGPT/Codex Login
+
+AI Scientist-v2 can also send OpenAI-compatible model requests to a local
+[OpenClaw](https://docs.openclaw.ai/gateway) Gateway. In this mode OpenClaw is
+responsible for ChatGPT/Codex OAuth login, credential storage, token refresh, and
+model routing. AI Scientist-v2 does not read browser cookies, scrape private
+credential stores, or store ChatGPT/Codex tokens in this repository.
+
+Start and authenticate OpenClaw separately, then point AI Scientist-v2 at the
+gateway:
+
+```bash
+openclaw models auth login --provider openai
+openclaw gateway status
+
+# Only needed when your OpenClaw Gateway requires bearer-token auth.
+export OPENCLAW_GATEWAY_TOKEN="YOUR_OPENCLAW_GATEWAY_TOKEN"
+
+python ai_scientist/perform_ideation_temp_free.py \
+ --workshop-file "ai_scientist/ideas/my_research_topic.md" \
+ --model openai/gpt-5.5 \
+ --model-provider openclaw_gateway \
+ --openclaw-base-url http://127.0.0.1:18789/v1 \
+ --max-num-generations 5 \
+ --num-reflections 5
+```
+
+For the full pipeline:
+
+```bash
+python launch_scientist_bfts.py \
+ --idea-file "ai_scientist/ideas/my_research_topic.json" \
+ --idea_idx 0 \
+ --model-provider openclaw_gateway \
+ --model_writeup openai/gpt-5.5 \
+ --model_writeup_small openai/gpt-5.5 \
+ --model_citation openai/gpt-5.5 \
+ --model_review openai/gpt-5.5 \
+ --model_agg_plots openai/gpt-5.5
+```
+
+By default the gateway provider sends requests to `openclaw/default` and puts the
+requested backend model in the `x-openclaw-model` header. Set
+`AI_SCIENTIST_OPENCLAW_USE_MODEL_HEADER=0` if your OpenClaw deployment expects
+the request `model` field to be forwarded unchanged.
+
 #### Gemini Models
 
 By default, the system uses the `GEMINI_API_KEY` environment variable for Gemini models through OpenAI API.

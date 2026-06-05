@@ -2,6 +2,8 @@ import json
 import logging
 import time
 
+from ai_scientist.model_providers import create_openai_client
+
 from .utils import FunctionSpec, OutputType, opt_messages_to_list, backoff_create
 from funcy import notnone, once, select_values
 import openai
@@ -24,7 +26,7 @@ def get_ai_client(model: str, max_retries=2) -> openai.OpenAI:
             max_retries=max_retries
         )
     else:
-        client = openai.OpenAI(max_retries=max_retries)
+        client = create_openai_client(max_retries=max_retries)
     return client
 
 

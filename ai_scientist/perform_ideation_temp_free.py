@@ -9,9 +9,13 @@ import sys
 
 sys.path.append(osp.join(osp.dirname(__file__), ".."))
 from ai_scientist.llm import (
-    AVAILABLE_LLMS,
     create_client,
     get_response_from_llm,
+)
+from ai_scientist.model_providers import (
+    OPENAI_API_PROVIDER,
+    OPENCLAW_GATEWAY_PROVIDER,
+    configure_openai_provider,
 )
 
 from ai_scientist.tools.semantic_scholar import SemanticScholarSearchTool
@@ -274,8 +278,26 @@ if __name__ == "__main__":
         "--model",
         type=str,
         default="gpt-4o-2024-05-13",
-        choices=AVAILABLE_LLMS,
         help="Model to use for AI Scientist.",
+    )
+    parser.add_argument(
+        "--model-provider",
+        type=str,
+        default=OPENAI_API_PROVIDER,
+        choices=[OPENAI_API_PROVIDER, OPENCLAW_GATEWAY_PROVIDER],
+        help=(
+            "Provider for OpenAI-compatible models. openai_api uses "
+            "OPENAI_API_KEY; openclaw_gateway uses a local OpenClaw Gateway."
+        ),
+    )
+    parser.add_argument(
+        "--openclaw-base-url",
+        type=str,
+        default=None,
+        help=(
+            "OpenClaw Gateway OpenAI-compatible base URL. Defaults to "
+            "http://127.0.0.1:18789/v1."
+        ),
     )
     parser.add_argument(
         "--max-num-generations",
@@ -296,6 +318,10 @@ if __name__ == "__main__":
         help="Number of reflection rounds per proposal.",
     )
     args = parser.parse_args()
+    configure_openai_provider(
+        provider=args.model_provider,
+        openclaw_base_url=args.openclaw_base_url,
+    )
 
     # Create the LLM client
     client, client_model = create_client(args.model)

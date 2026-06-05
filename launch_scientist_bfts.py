@@ -8,6 +8,11 @@ import re
 import sys
 from datetime import datetime
 from ai_scientist.llm import create_client
+from ai_scientist.model_providers import (
+    OPENAI_API_PROVIDER,
+    OPENCLAW_GATEWAY_PROVIDER,
+    configure_openai_provider,
+)
 
 from contextlib import contextmanager
 from ai_scientist.treesearch.perform_experiments_bfts_with_agentmanager import (
@@ -53,6 +58,31 @@ def parse_arguments():
         type=str,
         default="ideas/i_cant_believe_its_not_better.json",
         help="Path to a JSON file containing pregenerated ideas",
+    )
+    parser.add_argument(
+        "--idea-file",
+        dest="load_ideas",
+        default=argparse.SUPPRESS,
+        help="Alias for --load_ideas.",
+    )
+    parser.add_argument(
+        "--model-provider",
+        type=str,
+        default=OPENAI_API_PROVIDER,
+        choices=[OPENAI_API_PROVIDER, OPENCLAW_GATEWAY_PROVIDER],
+        help=(
+            "Provider for OpenAI-compatible models. openai_api uses "
+            "OPENAI_API_KEY; openclaw_gateway uses a local OpenClaw Gateway."
+        ),
+    )
+    parser.add_argument(
+        "--openclaw-base-url",
+        type=str,
+        default=None,
+        help=(
+            "OpenClaw Gateway OpenAI-compatible base URL. Defaults to "
+            "http://127.0.0.1:18789/v1."
+        ),
     )
     parser.add_argument(
         "--load_code",
@@ -181,6 +211,10 @@ def redirect_stdout_stderr_to_file(log_file_path):
 
 if __name__ == "__main__":
     args = parse_arguments()
+    configure_openai_provider(
+        provider=args.model_provider,
+        openclaw_base_url=args.openclaw_base_url,
+    )
     os.environ["AI_SCIENTIST_ROOT"] = os.path.dirname(os.path.abspath(__file__))
     print(f"Set AI_SCIENTIST_ROOT to {os.environ['AI_SCIENTIST_ROOT']}")
 
