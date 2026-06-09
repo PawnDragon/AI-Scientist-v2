@@ -65,6 +65,23 @@ Installation usually takes no more than one hour.
 #### OpenAI Models
 
 By default, the system uses the `OPENAI_API_KEY` environment variable for OpenAI models.
+For reasoning-capable OpenAI models, pass `--reasoning-effort` to set the
+reasoning budget used by compatible OpenAI/OpenClaw chat completion calls:
+
+```bash
+export OPENAI_API_KEY="YOUR_OPENAI_KEY_HERE"
+
+python ai_scientist/perform_ideation_temp_free.py \
+ --workshop-file "ai_scientist/ideas/my_research_topic.md" \
+ --model gpt-5.5 \
+ --model-provider openai_api \
+ --reasoning-effort xhigh \
+ --max-num-generations 5 \
+ --num-reflections 5
+```
+
+Supported values are `none`, `minimal`, `low`, `medium`, `high`, and `xhigh`.
+The model provider may reject values that a specific model does not support.
 
 #### OpenClaw Gateway for ChatGPT/Codex Login
 
@@ -89,6 +106,7 @@ python ai_scientist/perform_ideation_temp_free.py \
  --model openai/gpt-5.5 \
  --model-provider openclaw_gateway \
  --openclaw-base-url http://127.0.0.1:18789/v1 \
+ --reasoning-effort xhigh \
  --max-num-generations 5 \
  --num-reflections 5
 ```
@@ -104,7 +122,8 @@ python launch_scientist_bfts.py \
  --model_writeup_small openai/gpt-5.5 \
  --model_citation openai/gpt-5.5 \
  --model_review openai/gpt-5.5 \
- --model_agg_plots openai/gpt-5.5
+ --model_agg_plots openai/gpt-5.5 \
+ --reasoning-effort xhigh
 ```
 
 By default the gateway provider sends requests to `openclaw/default` and puts the

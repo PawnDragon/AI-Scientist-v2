@@ -14,8 +14,145 @@ class OpenClawGatewayProviderTest(unittest.TestCase):
                 max_retries=3,
             )
 
-        self.assertEqual(client, openai_cls.return_value)
+        self.assertIsInstance(client, model_providers.OpenAIAPIClient)
         openai_cls.assert_called_once_with(max_retries=3)
+
+    def test_openai_api_provider_applies_reasoning_effort(self):
+        completions = mock.Mock()
+        sdk_client = SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=completions))
+        )
+        client = model_providers.OpenAIAPIClient(sdk_client)
+
+        with mock.patch.dict(
+            os.environ,
+            {model_providers.REASONING_EFFORT_ENV: "xhigh"},
+            clear=True,
+        ):
+            client.chat.completions.create(
+                model="gpt-5.5",
+                messages=[{"role": "user", "content": "OK?"}],
+            )
+
+        completions.assert_called_once_with(
+            model="gpt-5.5",
+            messages=[{"role": "user", "content": "OK?"}],
+            reasoning_effort="xhigh",
+        )
+
+    def test_openai_api_provider_uses_max_completion_tokens_for_gpt5_models(self):
+        completions = mock.Mock()
+        sdk_client = SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=completions))
+        )
+        client = model_providers.OpenAIAPIClient(sdk_client)
+
+        with mock.patch.dict(os.environ, {}, clear=True):
+            client.chat.completions.create(
+                model="gpt-5.5",
+                messages=[{"role": "user", "content": "OK?"}],
+                max_tokens=4096,
+            )
+
+        completions.assert_called_once_with(
+            model="gpt-5.5",
+            messages=[{"role": "user", "content": "OK?"}],
+            max_completion_tokens=4096,
+        )
+
+    def test_openai_api_provider_expands_completion_budget_for_xhigh(self):
+        completions = mock.Mock()
+        sdk_client = SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=completions))
+        )
+        client = model_providers.OpenAIAPIClient(sdk_client)
+
+        with mock.patch.dict(
+            os.environ,
+            {model_providers.REASONING_EFFORT_ENV: "xhigh"},
+            clear=True,
+        ):
+            client.chat.completions.create(
+                model="gpt-5.5",
+                messages=[{"role": "user", "content": "OK?"}],
+                max_tokens=4096,
+            )
+
+        completions.assert_called_once_with(
+            model="gpt-5.5",
+            messages=[{"role": "user", "content": "OK?"}],
+            reasoning_effort="xhigh",
+            max_completion_tokens=12000,
+        )
+
+    def test_openai_api_provider_skips_reasoning_effort_for_tool_calls(self):
+        completions = mock.Mock()
+        sdk_client = SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=completions))
+        )
+        client = model_providers.OpenAIAPIClient(sdk_client)
+
+        with mock.patch.dict(
+            os.environ,
+            {model_providers.REASONING_EFFORT_ENV: "high"},
+            clear=True,
+        ):
+            client.chat.completions.create(
+                model="gpt-5.5",
+                messages=[{"role": "user", "content": "parse"}],
+                tools=[{"type": "function", "function": {"name": "parse"}}],
+                tool_choice={"type": "function", "function": {"name": "parse"}},
+                max_tokens=4096,
+            )
+
+        completions.assert_called_once_with(
+            model="gpt-5.5",
+            messages=[{"role": "user", "content": "parse"}],
+            tools=[{"type": "function", "function": {"name": "parse"}}],
+            tool_choice={"type": "function", "function": {"name": "parse"}},
+            max_completion_tokens=4096,
+        )
+
+    def test_openai_api_provider_normalizes_temperature_for_gpt5_models(self):
+        completions = mock.Mock()
+        sdk_client = SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=completions))
+        )
+        client = model_providers.OpenAIAPIClient(sdk_client)
+
+        client.chat.completions.create(
+            model="gpt-5.5",
+            messages=[{"role": "user", "content": "OK?"}],
+            temperature=0.7,
+        )
+
+        completions.assert_called_once_with(
+            model="gpt-5.5",
+            messages=[{"role": "user", "content": "OK?"}],
+            temperature=1,
+        )
+
+    def test_openai_api_provider_skips_reasoning_effort_for_non_reasoning_model(self):
+        completions = mock.Mock()
+        sdk_client = SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=completions))
+        )
+        client = model_providers.OpenAIAPIClient(sdk_client)
+
+        with mock.patch.dict(
+            os.environ,
+            {model_providers.REASONING_EFFORT_ENV: "xhigh"},
+            clear=True,
+        ):
+            client.chat.completions.create(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": "OK?"}],
+            )
+
+        completions.assert_called_once_with(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": "OK?"}],
+        )
 
     def test_openclaw_gateway_provider_uses_gateway_url_and_token(self):
         with mock.patch.dict(
@@ -54,6 +191,50 @@ class OpenClawGatewayProviderTest(unittest.TestCase):
         completions.assert_called_once_with(
             model="openclaw/default",
             messages=[{"role": "user", "content": "OK?"}],
+            extra_headers={"x-openclaw-model": "openai/gpt-5.5"},
+        )
+
+    def test_openclaw_gateway_applies_reasoning_effort_before_model_mapping(self):
+        completions = mock.Mock()
+        sdk_client = SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=completions))
+        )
+        client = model_providers.OpenClawGatewayClient(sdk_client)
+
+        with mock.patch.dict(
+            os.environ,
+            {model_providers.REASONING_EFFORT_ENV: "xhigh"},
+            clear=True,
+        ):
+            client.chat.completions.create(
+                model="openai/gpt-5.5",
+                messages=[{"role": "user", "content": "OK?"}],
+            )
+
+        completions.assert_called_once_with(
+            model="openclaw/default",
+            messages=[{"role": "user", "content": "OK?"}],
+            reasoning_effort="xhigh",
+            extra_headers={"x-openclaw-model": "openai/gpt-5.5"},
+        )
+
+    def test_openclaw_gateway_uses_max_completion_tokens_before_model_mapping(self):
+        completions = mock.Mock()
+        sdk_client = SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=completions))
+        )
+        client = model_providers.OpenClawGatewayClient(sdk_client)
+
+        client.chat.completions.create(
+            model="openai/gpt-5.5",
+            messages=[{"role": "user", "content": "OK?"}],
+            max_tokens=4096,
+        )
+
+        completions.assert_called_once_with(
+            model="openclaw/default",
+            messages=[{"role": "user", "content": "OK?"}],
+            max_completion_tokens=4096,
             extra_headers={"x-openclaw-model": "openai/gpt-5.5"},
         )
 

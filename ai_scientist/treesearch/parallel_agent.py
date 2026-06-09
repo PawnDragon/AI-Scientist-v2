@@ -271,7 +271,30 @@ class MinimalAgent:
         self.data_preview = None
 
     @property
+    def _agent_benchmark_only(self) -> bool:
+        return bool(getattr(self.cfg.experiment, "agent_benchmark_only", False))
+
+    @property
+    def _require_llm_agent_calls(self) -> bool:
+        return bool(getattr(self.cfg.experiment, "require_llm_agent_calls", False))
+
+    @property
     def _prompt_environment(self):
+        if self._agent_benchmark_only:
+            return {
+                "Installed Packages": (
+                    "Use local Python packages for a lightweight synthetic "
+                    "agent-security benchmark. Suitable packages include `json`, "
+                    "`dataclasses`, `random`, `time`, `numpy`, `pandas`, "
+                    "`matplotlib`, and the official `openai` SDK. Do not train, "
+                    "fine-tune, download, or load any local language model. If "
+                    "LLM agents are needed, call the OpenAI API using the "
+                    "`OPENAI_API_KEY` environment variable already configured in "
+                    "the runtime. For GPT-5 style models use `max_completion_tokens`, "
+                    "not `max_tokens`, in generated benchmark code."
+                )
+            }
+
         pkgs = [
             "numpy",
             "pandas",
@@ -296,6 +319,62 @@ class MinimalAgent:
 
     @property
     def _prompt_impl_guideline(self):
+        if self._agent_benchmark_only:
+            impl_guideline = [
+                "CRITICAL AGENT BENCHMARK REQUIREMENTS:",
+                "  - Implement a synthetic multi-agent security benchmark, not a local ML training job.",
+                "  - Do not train, fine-tune, download, or load any local language model.",
+                "  - Do not download external datasets or use real protected resources.",
+                "  - Use synthetic agents, synthetic tools, synthetic policies, and synthetic resources.",
+                "  - If LLM agents are needed, use the official OpenAI API via the `OPENAI_API_KEY` environment variable.",
+                "  - Keep API calls small and bounded; prefer a small number of benchmark tasks for this first run.",
+                "  - The code must run on CPU-only machines.",
+                "  - The benchmark must include at least one attack condition, one benign condition, and one defense condition.",
+                "  - Print explicit metrics such as attack_success_rate, unauthorized_tool_call_rate, benign_utility, false_positive_rate, false_negative_rate, and runtime_seconds.",
+                "  - Save plottable metrics as `.npy` files in the `working` directory and create simple `.png` plots in the `working` directory.",
+                "Important code structure requirements:",
+                "  - Do NOT put execution code inside an `if __name__ == \"__main__\":` block.",
+                "  - The script should execute immediately when run.",
+                "  - The code should start with:",
+                "    import os",
+                "    working_dir = os.path.join(os.getcwd(), 'working')",
+                "    os.makedirs(working_dir, exist_ok=True)",
+                "  - The code should be a single-file Python program that is self-contained and executable.",
+                "  - No parts of the code should be skipped; do not terminate before finishing the benchmark.",
+                "  - Your response must include a concise natural-language plan followed by exactly one Python code block.",
+                f"  - The benchmark must complete within {humanize.naturaldelta(self.cfg.exec.timeout)}.",
+                "Data saving requirements:",
+                "  - Save metrics arrays with `np.save()` or `np.savez_compressed()`.",
+                "  - Save any plots under the `working` directory.",
+                "  - CRITICAL: also save a machine-readable dictionary to `os.path.join(working_dir, 'experiment_data.npy')` using `np.save(..., experiment_data)`.",
+                "  - `experiment_data` must include per-variant metrics, per-task decisions, raw LLM responses, and the primary scalar metric.",
+                "  - Do not use a different filename instead of `experiment_data.npy`; AI-Scientist's parser requires that exact file.",
+                "Evaluation requirements:",
+                "  - Print the metric name before each metric value.",
+                "  - Include enough logs or summary tables to show which delegation path caused each unsafe protected-tool call.",
+                "  - Report one primary scalar metric compatible with the requested evaluation metric.",
+            ]
+            if self._require_llm_agent_calls:
+                impl_guideline.extend(
+                    [
+                        "MANDATORY REAL LLM AGENT REQUIREMENTS:",
+                        "  - This benchmark MUST use actual LLM agent calls. It is invalid to implement agents only as dataclasses, dictionaries, heuristics, or deterministic policy functions.",
+                        "  - The generated Python code MUST import the official OpenAI SDK and instantiate `OpenAI()` from `openai`.",
+                        "  - The generated Python code MUST call `client.chat.completions.create(...)` at runtime for the benchmark's agent decisions.",
+                        "  - Use `OPENAI_API_KEY` from the environment. Do not print, save, or log the API key.",
+                        "  - Use `os.getenv('AI_SCIENTIST_AGENT_BENCHMARK_MODEL', 'gpt-5.5')` as the model id for benchmark agent calls.",
+                        "  - Use `temperature=1.0` and `max_completion_tokens=512` for benchmark agent calls; do not use `max_tokens`.",
+                        "  - Do not use tool/function calling for benchmark agent calls; ask the model to return compact JSON text and parse it defensively.",
+                        "  - Every task must construct a prompt for a baseline LLM agent and a defended LLM agent. The LLM response must decide `allow` or `deny` and optionally name the synthetic tool.",
+                        "  - The protected synthetic tool may still be a local Python function, but whether it is invoked must depend on the LLM agent decision.",
+                        "  - Include at least two synthetic delegation-laundering tasks and both benign and attack conditions.",
+                        "  - Keep the run small: make no more than 12 OpenAI API calls total in the benchmark.",
+                        "  - Cache each LLM response in memory and save raw response text plus parsed decisions in `experiment_data.npy` and CSV logs.",
+                        "  - If `OPENAI_API_KEY` is missing, raise a clear RuntimeError before running the benchmark.",
+                    ]
+                )
+            return {"Implementation guideline": impl_guideline}
+
         impl_guideline = [
             "CRITICAL GPU REQUIREMENTS - Your code MUST include ALL of these:",
             "  - At the start of your code, add these lines to handle GPU/CPU:",
@@ -451,14 +530,29 @@ class MinimalAgent:
         }
 
     def _draft(self) -> Node:
-        prompt: Any = {
-            "Introduction": (
+        if self._agent_benchmark_only:
+            introduction = (
+                "You are an AI security researcher aiming to publish a paper. "
+                "Your first task is to write Python code implementing a small "
+                "synthetic agent-security benchmark based on the research idea "
+                "provided below. The code should define synthetic agents, tools, "
+                "permissions, policies, attack tasks, defense variants, metrics, "
+                "and basic visualizations. Do not train, fine-tune, download, or "
+                "load any local language model; if LLM agents are needed, use "
+                "OpenAI API calls through the configured OPENAI_API_KEY. Focus on "
+                "a simple working benchmark before sophisticated improvements."
+            )
+        else:
+            introduction = (
                 "You are an AI researcher who is looking to publish a paper that will contribute significantly to the field."
                 "Your first task is to write a python code to implement a solid baseline based on your research idea provided below, "
                 "from data preparation to model training, as well as evaluation and visualization. "
                 "Focus on getting a simple but working implementation first, before any sophisticated improvements. "
                 "We will explore more advanced variations in later stages."
-            ),
+            )
+
+        prompt: Any = {
+            "Introduction": introduction,
             "Research idea": self.task_desc,
             "Memory": self.memory_summary if self.memory_summary else "",
             "Instructions": {},
@@ -679,6 +773,51 @@ class MinimalAgent:
             )
         print("Final plan + code extraction attempt failed, giving up...")
         return "", completion_text  # type: ignore
+
+    def validate_generated_code(self, code: str) -> str | None:
+        """Return an error string if generated code violates hard config constraints."""
+
+        if not self._agent_benchmark_only:
+            return None
+
+        if "experiment_data.npy" not in code:
+            return (
+                "Generated benchmark code is unsupported because it does not save "
+                "the required working/experiment_data.npy metrics artifact."
+            )
+
+        if not self._require_llm_agent_calls:
+            return None
+
+        lower_code = code.lower()
+        has_openai_import = (
+            "from openai import openai" in lower_code
+            or "from openai import" in lower_code
+            or "import openai" in lower_code
+        )
+        has_openai_client = "OpenAI(" in code or "openai.OpenAI(" in code
+        has_chat_call = ".chat.completions.create" in code
+
+        if not (has_openai_import and has_openai_client and has_chat_call):
+            return (
+                "Generated benchmark code is unsupported because "
+                "experiment.require_llm_agent_calls=True requires actual OpenAI "
+                "SDK chat completion calls for benchmark agent decisions."
+            )
+
+        if "OPENAI_API_KEY" not in code:
+            return (
+                "Generated benchmark code is unsupported because it does not "
+                "check/use the OPENAI_API_KEY environment variable for LLM agents."
+            )
+
+        if "max_tokens=" in code or "max_tokens =" in code:
+            return (
+                "Generated benchmark code is unsupported for GPT-5 style models "
+                "because it uses max_tokens instead of max_completion_tokens."
+            )
+
+        return None
 
     def parse_exec_result(
         self, node: Node, exec_result: ExecutionResult, workspace: str
@@ -1522,17 +1661,37 @@ class ParallelAgent:
                         child_node.parent = parent_node
 
             # Execute and parse results
-            print("Running code")
-            exec_result = process_interpreter.run(child_node.code, True)
-            process_interpreter.cleanup_session()
+            validation_error = worker_agent.validate_generated_code(child_node.code)
+            code_executed = False
+            if validation_error:
+                print(f"[red]{validation_error}[/red]")
+                exec_result = ExecutionResult(
+                    term_out=[validation_error],
+                    exec_time=0.0,
+                    exc_type="GeneratedCodeValidationError",
+                    exc_info={"reason": validation_error},
+                    exc_stack=[],
+                )
+                child_node.absorb_exec_result(exec_result)
+                child_node.analysis = validation_error
+                child_node.is_buggy = True
+            else:
+                print("Running code")
+                exec_result = process_interpreter.run(child_node.code, True)
+                code_executed = True
+                process_interpreter.cleanup_session()
 
-            print("Parsing execution results")
-            worker_agent.parse_exec_result(
-                node=child_node, exec_result=exec_result, workspace=working_dir
-            )
+                print("Parsing execution results")
+                worker_agent.parse_exec_result(
+                    node=child_node, exec_result=exec_result, workspace=working_dir
+                )
 
             # Add check for saved data files
-            data_files = [f for f in os.listdir(working_dir) if f.endswith(".npy")]
+            data_files = (
+                [f for f in os.listdir(working_dir) if f.endswith(".npy")]
+                if code_executed
+                else []
+            )
             if not data_files:
                 logger.warning(
                     "No .npy files found in working directory. Data may not have been saved properly."

@@ -11,6 +11,7 @@ from ai_scientist.llm import create_client
 from ai_scientist.model_providers import (
     OPENAI_API_PROVIDER,
     OPENCLAW_GATEWAY_PROVIDER,
+    SUPPORTED_REASONING_EFFORTS,
     configure_openai_provider,
 )
 
@@ -83,6 +84,22 @@ def parse_arguments():
             "OpenClaw Gateway OpenAI-compatible base URL. Defaults to "
             "http://127.0.0.1:18789/v1."
         ),
+    )
+    parser.add_argument(
+        "--reasoning-effort",
+        type=str,
+        default=None,
+        choices=SUPPORTED_REASONING_EFFORTS,
+        help=(
+            "Optional reasoning effort for compatible OpenAI/OpenClaw models "
+            "(for example: high or xhigh)."
+        ),
+    )
+    parser.add_argument(
+        "--bfts-config",
+        type=str,
+        default="bfts_config.yaml",
+        help="Path to the BFTS experiment configuration file.",
     )
     parser.add_argument(
         "--load_code",
@@ -158,6 +175,11 @@ def parse_arguments():
         action="store_true",
         help="If set, skip the review process",
     )
+    parser.add_argument(
+        "--skip_aggregate_plots",
+        action="store_true",
+        help="If set, skip the final plot aggregation step after BFTS experiments.",
+    )
     return parser.parse_args()
 
 
@@ -214,6 +236,7 @@ if __name__ == "__main__":
     configure_openai_provider(
         provider=args.model_provider,
         openclaw_base_url=args.openclaw_base_url,
+        reasoning_effort=args.reasoning_effort,
     )
     os.environ["AI_SCIENTIST_ROOT"] = os.path.dirname(os.path.abspath(__file__))
     print(f"Set AI_SCIENTIST_ROOT to {os.environ['AI_SCIENTIST_ROOT']}")
@@ -280,7 +303,7 @@ if __name__ == "__main__":
     with open(idea_path_json, "w") as f:
         json.dump(ideas[args.idea_idx], f, indent=4)
 
-    config_path = "bfts_config.yaml"
+    config_path = args.bfts_config
     idea_config_path = edit_bfts_config_file(
         config_path,
         idea_dir,
@@ -296,9 +319,14 @@ if __name__ == "__main__":
             dirs_exist_ok=True,
         )
 
-    aggregate_plots(base_folder=idea_dir, model=args.model_agg_plots)
+    if args.skip_aggregate_plots:
+        print("Skipping final plot aggregation because --skip_aggregate_plots is set.")
+    else:
+        aggregate_plots(base_folder=idea_dir, model=args.model_agg_plots)
 
-    shutil.rmtree(osp.join(idea_dir, "experiment_results"))
+        experiment_results_path = osp.join(idea_dir, "experiment_results")
+        if os.path.exists(experiment_results_path):
+            shutil.rmtree(experiment_results_path)
 
     save_token_tracker(idea_dir)
 
@@ -354,8 +382,13 @@ if __name__ == "__main__":
 
     print("Start cleaning up processes")
     # Kill all mp and torch processes associated with this experiment
-    import psutil
     import signal
+
+    try:
+        import psutil
+    except ImportError:
+        print("psutil is not installed; skipping optional process cleanup.")
+        sys.exit(0)
 
     # Get the current process and all its children
     current_process = psutil.Process()

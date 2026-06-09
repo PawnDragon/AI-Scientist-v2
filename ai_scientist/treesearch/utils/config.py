@@ -72,6 +72,7 @@ class AgentConfig:
 
     summary: Optional[StageConfig] = None
     select_node: Optional[StageConfig] = None
+    max_main_stage: Optional[int] = None
 
 @dataclass
 class ExecConfig:
@@ -83,6 +84,10 @@ class ExecConfig:
 @dataclass
 class ExperimentConfig:
     num_syn_datasets: int
+    agent_benchmark_only: bool = False
+    no_local_model_training: bool = False
+    llm_agents_use_openai_api: bool = False
+    require_llm_agent_calls: bool = False
 
 
 @dataclass
@@ -242,7 +247,7 @@ def save_run(cfg: Config, journal, stage_name: str = None):
         raise
     # save the best found solution
     try:
-        best_node = journal.get_best_node(only_good=False, cfg=cfg)
+        best_node = journal.get_best_node(cfg=cfg)
         if best_node is not None:
             for existing_file in save_dir.glob("best_solution_*.py"):
                 existing_file.unlink()

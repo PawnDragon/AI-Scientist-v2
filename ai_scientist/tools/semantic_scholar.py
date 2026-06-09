@@ -1,5 +1,6 @@
 import os
 import requests
+import threading
 import time
 import warnings
 from typing import Dict, List, Optional, Union
@@ -14,6 +15,41 @@ def on_backoff(details: Dict) -> None:
         f"Backing off {details['wait']:0.1f} seconds after {details['tries']} tries "
         f"calling function {details['target'].__name__} at {time.strftime('%X')}"
     )
+
+
+S2_MIN_REQUEST_INTERVAL_SECONDS_ENV = "S2_MIN_REQUEST_INTERVAL_SECONDS"
+DEFAULT_S2_MIN_REQUEST_INTERVAL_SECONDS = 1.25
+_S2_RATE_LIMIT_LOCK = threading.Lock()
+_last_s2_request_started_at = 0.0
+
+
+def _get_s2_min_request_interval_seconds() -> float:
+    configured = os.getenv(S2_MIN_REQUEST_INTERVAL_SECONDS_ENV)
+    if configured is None:
+        return DEFAULT_S2_MIN_REQUEST_INTERVAL_SECONDS
+    try:
+        interval = float(configured)
+    except ValueError:
+        warnings.warn(
+            f"Invalid {S2_MIN_REQUEST_INTERVAL_SECONDS_ENV}={configured!r}; "
+            f"using {DEFAULT_S2_MIN_REQUEST_INTERVAL_SECONDS} seconds."
+        )
+        return DEFAULT_S2_MIN_REQUEST_INTERVAL_SECONDS
+    return max(interval, 0.0)
+
+
+def _rate_limited_s2_get(*args, **kwargs):
+    global _last_s2_request_started_at
+
+    interval = _get_s2_min_request_interval_seconds()
+    with _S2_RATE_LIMIT_LOCK:
+        now = time.monotonic()
+        wait_seconds = _last_s2_request_started_at + interval - now
+        if wait_seconds > 0:
+            time.sleep(wait_seconds)
+        _last_s2_request_started_at = time.monotonic()
+
+    return requests.get(*args, **kwargs)
 
 
 class SemanticScholarSearchTool(BaseTool):
@@ -53,6 +89,7 @@ class SemanticScholarSearchTool(BaseTool):
         backoff.expo,
         (requests.exceptions.HTTPError, requests.exceptions.ConnectionError),
         on_backoff=on_backoff,
+        max_tries=5,
     )
     def search_for_papers(self, query: str) -> Optional[List[Dict]]:
         if not query:
@@ -62,7 +99,7 @@ class SemanticScholarSearchTool(BaseTool):
         if self.S2_API_KEY:
             headers["X-API-KEY"] = self.S2_API_KEY
         
-        rsp = requests.get(
+        rsp = _rate_limited_s2_get(
             "https://api.semanticscholar.org/graph/v1/paper/search",
             headers=headers,
             params={
@@ -99,7 +136,10 @@ Abstract: {paper.get("abstract", "No abstract available.")}"""
 
 
 @backoff.on_exception(
-    backoff.expo, requests.exceptions.HTTPError, on_backoff=on_backoff
+    backoff.expo,
+    requests.exceptions.HTTPError,
+    on_backoff=on_backoff,
+    max_tries=5,
 )
 def search_for_papers(query, result_limit=10) -> Union[None, List[Dict]]:
     S2_API_KEY = os.getenv("S2_API_KEY")
@@ -114,7 +154,7 @@ def search_for_papers(query, result_limit=10) -> Union[None, List[Dict]]:
     if not query:
         return None
     
-    rsp = requests.get(
+    rsp = _rate_limited_s2_get(
         "https://api.semanticscholar.org/graph/v1/paper/search",
         headers=headers,
         params={
@@ -130,7 +170,6 @@ def search_for_papers(query, result_limit=10) -> Union[None, List[Dict]]:
     rsp.raise_for_status()
     results = rsp.json()
     total = results["total"]
-    time.sleep(1.0)
     if not total:
         return None
 

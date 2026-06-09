@@ -1,4 +1,5 @@
 from . import backend_anthropic, backend_openai
+from ai_scientist.model_providers import get_configured_reasoning_effort
 from .utils import FunctionSpec, OutputType, PromptType, compile_prompt_to_md
 
 def get_ai_client(model: str, **model_kwargs):
@@ -59,7 +60,7 @@ def query(
             user_message = system_message
         system_message = None
         # model_kwargs["temperature"] = 0.5
-        model_kwargs["reasoning_effort"] = "high"
+        model_kwargs["reasoning_effort"] = get_configured_reasoning_effort("high")
         model_kwargs["max_completion_tokens"] = 100000  # max_tokens
         # remove 'temperature' from model_kwargs
         model_kwargs.pop("temperature", None)

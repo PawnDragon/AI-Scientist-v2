@@ -15,6 +15,7 @@ from ai_scientist.llm import (
 from ai_scientist.model_providers import (
     OPENAI_API_PROVIDER,
     OPENCLAW_GATEWAY_PROVIDER,
+    SUPPORTED_REASONING_EFFORTS,
     configure_openai_provider,
 )
 
@@ -129,6 +130,23 @@ Results from your last action (if any):
 """
 
 
+def parse_action_arguments(arguments_text: str) -> Dict:
+    cleaned = arguments_text.strip()
+    if cleaned.startswith("```json"):
+        match = re.search(r"```json\s*(.*?)\s*```", cleaned, re.DOTALL)
+        if match:
+            cleaned = match.group(1).strip()
+
+    start = cleaned.find("{")
+    if start < 0:
+        raise ValueError("Arguments do not contain a JSON object.")
+
+    parsed, _ = json.JSONDecoder().raw_decode(cleaned[start:])
+    if not isinstance(parsed, dict):
+        raise ValueError("Arguments JSON must be an object.")
+    return parsed
+
+
 def generate_temp_free_idea(
     idea_fname: str,
     client: Any,
@@ -203,19 +221,13 @@ def generate_temp_free_idea(
                     print(f"Action: {action}")
                     print(f"Arguments: {arguments_text}")
 
-                    # If arguments are wrapped in ```json blocks, extract the content
-                    if arguments_text.startswith("```json"):
-                        arguments_text = re.search(
-                            r"```json\s*(.*?)\s*```", arguments_text, re.DOTALL
-                        ).group(1)
-
                     # Process the action and arguments
                     if action in tools_dict:
                         # It's a tool we have defined
                         tool = tools_dict[action]
                         # Parse arguments
                         try:
-                            arguments_json = json.loads(arguments_text)
+                            arguments_json = parse_action_arguments(arguments_text)
                         except json.JSONDecodeError:
                             raise ValueError(f"Invalid arguments JSON for {action}.")
 
@@ -229,7 +241,7 @@ def generate_temp_free_idea(
                     elif action == "FinalizeIdea":
                         # Parse arguments
                         try:
-                            arguments_json = json.loads(arguments_text)
+                            arguments_json = parse_action_arguments(arguments_text)
                             idea = arguments_json.get("idea")
                             if not idea:
                                 raise ValueError("Missing 'idea' in arguments.")
@@ -300,6 +312,16 @@ if __name__ == "__main__":
         ),
     )
     parser.add_argument(
+        "--reasoning-effort",
+        type=str,
+        default=None,
+        choices=SUPPORTED_REASONING_EFFORTS,
+        help=(
+            "Optional reasoning effort for compatible OpenAI/OpenClaw models "
+            "(for example: high or xhigh)."
+        ),
+    )
+    parser.add_argument(
         "--max-num-generations",
         type=int,
         default=1,
@@ -321,6 +343,7 @@ if __name__ == "__main__":
     configure_openai_provider(
         provider=args.model_provider,
         openclaw_base_url=args.openclaw_base_url,
+        reasoning_effort=args.reasoning_effort,
     )
 
     # Create the LLM client

@@ -165,6 +165,32 @@ class AgentManager:
                 - Conduct systematic component analysis that reveals the contribution of each part
                 - Use the same datasets you used from the previous stage""",
         }
+        if getattr(self.cfg.experiment, "agent_benchmark_only", False):
+            self.main_stage_dict = {
+                1: "benchmark_implementation",
+                2: "benchmark_variants",
+                3: "defense_experiments",
+                4: "ablation_analysis",
+            }
+            self.main_stage_goals = {
+                1: """
+                - Implement a small synthetic agent-security benchmark for the research idea
+                - Use only local Python orchestration, synthetic tools, and OpenAI API calls for LLM agents
+                - Do not train, fine-tune, or download any local language model
+                - Report security and utility metrics from executable benchmark runs""",
+                2: """
+                - Improve benchmark coverage and robustness without local model training
+                - Add controlled attack variants, benign workflows, and defense variants
+                - Keep all data synthetic and all LLM agents API-backed""",
+                3: """
+                - Conduct systematic defense experiments for the proposed agent-security mechanism
+                - Compare no-defense, final-agent RBAC, prompt-only, and provenance-aware defenses
+                - Report attack success, unauthorized tool calls, benign utility, and overhead""",
+                4: """
+                - Conduct ablations over benchmark and defense components
+                - Use the same synthetic workflows and API-backed agents
+                - Do not introduce local model training or real protected resources""",
+            }
         # Create initial stage
         self._create_initial_stage()
 
@@ -804,6 +830,18 @@ Your research idea:\n\n
                             break
             self._save_checkpoint()
             # Main stage complete - create next main stage
+            max_main_stage = getattr(self.cfg.agent, "max_main_stage", None)
+            if self.current_stage and max_main_stage is not None:
+                completed_main_stage = self.parse_stage_names(self.stages[-1].name)[0]
+                if completed_main_stage >= max_main_stage:
+                    logger.info(
+                        f"Reached configured max_main_stage={max_main_stage}; stopping."
+                    )
+                    print(
+                        f"[green]Reached configured max_main_stage={max_main_stage}; stopping.[/green]"
+                    )
+                    self.current_stage = None
+                    break
             if self.current_stage:
                 next_main_stage = self._create_next_main_stage(
                     self.stages[-1], self.journals[self.stages[-1].name]
